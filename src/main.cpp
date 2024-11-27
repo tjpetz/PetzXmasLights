@@ -330,7 +330,7 @@ void setup() {
 
 float g_fps = 0.0;
 int currentEffect = 0;
-const int maxEffects = 4;
+const int maxEffects = 6;
 
 void loop2() {}
 
@@ -345,29 +345,35 @@ void loop() {
       comet(NUMBER_OF_LIGHTS);
       FastLED.show();
 
-      // // Run the current effect
-      // EVERY_N_MILLISECONDS(500) {
-      //   switch (currentEffect) {
-      //     case 0:
-      //       candyCane(g_candyStripWidth.value(), g_numberOfLights.value());
-      //       break;
-      //     case 1:
-      //       randomGreenAndRed(g_numberOfLights.value());
-      //       break;
-      //     case 2:
-      //       train(g_trainCarLength.value(), g_numberOfLights.value());
-      //       break;
-      //     case 3:
-      //       redWhiteBlue(g_trainCarLength.value(), g_numberOfLights.value());
-      //       break;
-      //   }
-      // }
+      // Run the current effect
+      EVERY_N_MILLISECONDS(500) {
+        switch (currentEffect) {
+          case 0:
+            candyCane(g_candyStripWidth.value(), g_numberOfLights.value());
+            break;
+          case 1:
+            randomGreenAndRed(g_numberOfLights.value());
+            break;
+          case 2:
+            train(g_trainCarLength.value(), g_numberOfLights.value());
+            break;
+          case 3:
+            redWhiteBlue(g_trainCarLength.value(), g_numberOfLights.value());
+            break;
+          case 4:
+            twinkleStar(g_numberOfLights.value());
+            break;
+          case 5:
+            comet(g_numberOfLights.value());
+            break;
+        }
+      }
 
-      // // Switch to the next effect - NB we cannot EVERY_N_SECONDS() as it doesn't handle variable periods.
-      // if (millis() - lastEffectStartTime >= g_configData.secondsBetweenEffects * 1000) {
-      //   LOG("Switching Effects\n");
-      //   currentEffect = (currentEffect + 1) % maxEffects;
-      //   lastEffectStartTime = millis();
+      // Switch to the next effect - NB we cannot EVERY_N_SECONDS() as it doesn't handle variable periods.
+      if (millis() - lastEffectStartTime >= g_configData.secondsBetweenEffects * 1000) {
+        LOG("Switching Effects\n");
+        currentEffect = (currentEffect + 1) % maxEffects;
+        lastEffectStartTime = millis();
       }
    } else {
       FastLED.clear(true);
