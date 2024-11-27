@@ -6,3 +6,7 @@
 
 .DS_Store
 **/.DS_Store
+
+#exclude secrets.h
+secrets.h
+

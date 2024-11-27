@@ -10,6 +10,8 @@
  * @note While it might be nice to use the flash storage on the NINA module the
  * ArduinoBLE module and WiFiNINA are difficult to use together.  Using the WiFiNINA to
  * access the filesystem disables the BLE functionality.
+ * 
+ * @note Converting 
  */
 
 #include <Arduino.h>
