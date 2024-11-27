@@ -26,8 +26,8 @@
 #define TRAIN_CAR_LENGTH 5
 #define BLE_LOCAL_NAME "XmasLights_001"
 #define BLE_DEVICE_NAME "XmasLights"
-#define NUMBER_OF_LIGHTS 300
-#define SECONDS_BETWEEN_EFFECTS 15
+#define NUMBER_OF_LIGHTS 150
+#define SECONDS_BETWEEN_EFFECTS 5
 #define DATA_PIN 3
 
 /** guid block - take a guid for a BLE Service
@@ -106,7 +106,6 @@ void updateConfiguration(BLEDevice central) {
   }
 }
 
-
 /** Configure the BLE Service and it's characteristics and descriptors */
 void configureBLEService() {
 
@@ -145,6 +144,55 @@ void configureBLEService() {
   LOG("BLE setup complete\n");
 }
 
+/** Comet */
+void comet(unsigned int nbrOfLEDS) {
+
+  const int cometSize = 10;
+  static int iDirection = 1;
+  static int iPos = 0;
+  const int fadeAmt = 64;
+
+  iPos += iDirection;
+
+  if (iPos == (nbrOfLEDS - cometSize) || iPos == 0)
+    iDirection *= -1;
+
+  for (int i = 0; i < cometSize; i++)
+    leds[iPos + 1].setHue(HUE_RED);
+
+  for (int j = 0; j < nbrOfLEDS; j++)
+    leds[j] = leds[j].fadeToBlackBy(fadeAmt);
+
+//  delay(20);
+}
+
+/** Twinkle stars */
+void twinkleStar(unsigned int nbrOfLEDS) {
+
+  static const unsigned int nbrOfColors = 5;
+
+  static const CRGB twinkleColors [nbrOfColors] =
+  {
+    CRGB::Red,
+    CRGB::Blue,
+    CRGB::Purple,
+    CRGB::Green,
+    CRGB::Orange
+  };
+
+  static unsigned int passCount = 0;
+  passCount++;
+
+  if (passCount == nbrOfLEDS / 4) 
+  {
+    passCount = 0;
+    FastLED.clear(false);
+  }
+  
+  leds[random(nbrOfLEDS)] = twinkleColors[random(nbrOfColors)];
+  delay(200);
+
+}
 
 /** Green and Red Train */
 void train(unsigned int trainLength, unsigned int nbrLEDS) {
@@ -164,7 +212,6 @@ void train(unsigned int trainLength, unsigned int nbrLEDS) {
   FastLED.show();
   offset = (offset + 1) % nbrLEDS;
 }
-
 
 /** Rotating candy cane - move the candy cane one step everytime we're called */
 void candyCane(unsigned int stripWidth, unsigned int nbrLEDS) {
@@ -225,7 +272,7 @@ void randomGreenAndRed(unsigned int nbrLEDS) {
 }
 
 
-void updateDisplay(float fps) {
+void updateDisplay(double fps) {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE, SSD1306_BLACK);
@@ -279,20 +326,6 @@ void setup() {
 
   lastEffectStartTime = millis();
 
-// Test
-  // FastLED.clear(true);
-  // FastLED.setCorrection(CRGB(TypicalPixelString));
-  // FastLED.setTemperature(CRGB(Tungsten40W));
-  // for(CRGB & pixel : leds(0,9)) { pixel = CRGB::FairyLight; }
-  // for(CRGB & pixel : leds(10,19)) { pixel = CRGB::WhiteSmoke; }
-  // for(CRGB & pixel : leds(20,29)) { pixel = CRGB::White; }
-  // for(CRGB & pixel : leds(30,39)) { pixel = CRGB::Linen; }
-  // for(CRGB & pixel : leds(40, 44)) { pixel = CRGB::Green; }
-  // for(CRGB & pixel : leds(45, 49)) { pixel = CRGB::Red; }
-  
-//  fill_solid(leds, 10, CRGB::FairyLight); // white);
-//  FastLED.setBrightness(128);
-  FastLED.show();
 }
 
 float g_fps = 0.0;
@@ -303,43 +336,46 @@ void loop2() {}
 
 void loop() {
 
-  int startMillis = millis();
+  double startTime = millis() / 1000.0;
 
   if (!BLE.connected()) {         // Only run the effects if NOT connected to BLE
     if (g_runLights.value()) {
 
-      // Run the current effect
-      EVERY_N_MILLISECONDS(500) {
-        switch (currentEffect) {
-          case 0:
-            candyCane(g_candyStripWidth.value(), g_numberOfLights.value());
-            break;
-          case 1:
-            randomGreenAndRed(g_numberOfLights.value());
-            break;
-          case 2:
-            train(g_trainCarLength.value(), g_numberOfLights.value());
-            break;
-          case 3:
-            redWhiteBlue(g_trainCarLength.value(), g_numberOfLights.value());
-            break;
-        }
-      }
+      // twinkleStar(NUMBER_OF_LIGHTS);
+      comet(NUMBER_OF_LIGHTS);
+      FastLED.show();
 
-      // Switch to the next effect - NB we cannot EVERY_N_SECONDS() as it doesn't handle variable periods.
-      if (millis() - lastEffectStartTime >= g_configData.secondsBetweenEffects * 1000) {
-        LOG("Switching Effects\n");
-        currentEffect = (currentEffect + 1) % maxEffects;
-        lastEffectStartTime = millis();
+      // // Run the current effect
+      // EVERY_N_MILLISECONDS(500) {
+      //   switch (currentEffect) {
+      //     case 0:
+      //       candyCane(g_candyStripWidth.value(), g_numberOfLights.value());
+      //       break;
+      //     case 1:
+      //       randomGreenAndRed(g_numberOfLights.value());
+      //       break;
+      //     case 2:
+      //       train(g_trainCarLength.value(), g_numberOfLights.value());
+      //       break;
+      //     case 3:
+      //       redWhiteBlue(g_trainCarLength.value(), g_numberOfLights.value());
+      //       break;
+      //   }
+      // }
+
+      // // Switch to the next effect - NB we cannot EVERY_N_SECONDS() as it doesn't handle variable periods.
+      // if (millis() - lastEffectStartTime >= g_configData.secondsBetweenEffects * 1000) {
+      //   LOG("Switching Effects\n");
+      //   currentEffect = (currentEffect + 1) % maxEffects;
+      //   lastEffectStartTime = millis();
       }
    } else {
       FastLED.clear(true);
     }
-  }
 
-  int duration = millis() - startMillis;
+  double duration = millis() / 1000.0 - startTime;
   g_fps = 0.9f * g_fps + 0.1f * (1000.0f / duration);
-  updateDisplay(g_fps);
+//  updateDisplay(g_fps);
 
   BLE.poll(50);
 }
