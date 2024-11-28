@@ -11,7 +11,6 @@
  * ArduinoBLE module and WiFiNINA are difficult to use together.  Using the WiFiNINA to
  * access the filesystem disables the BLE functionality.
  * 
- * @note Converting 
  */
 
 #include <Arduino.h>
@@ -23,13 +22,14 @@
 #include "secrets.h"
 
 /** Global defaults */
-#define CANDY_STRIP_WIDTH 5
+#define CANDY_STRIPE_WIDTH 5
 #define TRAIN_CAR_LENGTH 5
 #define HOSTNAME "Library_XmasLights"
 #define NUMBER_OF_LIGHTS 150
 #define SECONDS_BETWEEN_EFFECTS 5
 #define DATA_PIN 3
 #define LED_BRIGHTNESS 64
+#define MAX_POWER_mW 5000
 
 #define MAX_DEBUG_BUFF 256
 #define LOG(...) \
@@ -41,14 +41,6 @@
 
 
 CRGBArray<NUMBER_OF_LIGHTS> leds;
-// const CHSV red = CHSV(0, 255, 72);
-// const CHSV green = CHSV(85, 255, 72);
-const CRGB white = CRGB::White; // CHSV(0, 0, 50);
-const CRGB black = CHSV(0, 0, 0);;
-const CRGB blue = CRGB::DarkBlue; // CHSV(160, 255, 50);
-const CRGB red = CRGB::DarkRed;
-const CRGB green = CRGB::DarkGreen;
-
 
 int currentEffectNbr = 0;
 const int nbrOfEffects = 7;
@@ -141,10 +133,10 @@ void train(unsigned int nbrLEDS, unsigned int trainLength = 10) {
     FastLED.clear();
     for (int j = 0; j < trainLength; j++) {
       if ((j + offset) < nbrLEDS) {
-        leds[j + offset] = red;
+        leds[j + offset] = CRGB::DarkRed;
       }
       if ((j + trainLength + offset) < nbrLEDS) {
-        leds[j + trainLength + offset] = green;
+        leds[j + trainLength + offset] = CRGB::DarkGreen;
       }
     }
     
@@ -157,7 +149,7 @@ void train(unsigned int nbrLEDS, unsigned int trainLength = 10) {
  * @note While safe to call with any width strip, to avoid artifacts the
  * nbrOfLEDS should be divisible by 2 * stripWidth.
 */
-void candyCane(unsigned int nbrLEDS, unsigned int stripWidth = 5) {
+void candyCane(unsigned int nbrLEDS, unsigned int stripeWidth = CANDY_STRIPE_WIDTH, CRGB stripeColor = CRGB::Red) {
 
   static int offset = 0;
 
@@ -165,12 +157,12 @@ void candyCane(unsigned int nbrLEDS, unsigned int stripWidth = 5) {
     // Fill all with background color - white
     fill_solid(leds, nbrLEDS, CRGB::White);
     
-    // Draw the red stripes - compute the number of strips
-    for (int i = 0; i < (nbrLEDS / stripWidth); i += 2) {
+    // Draw the red stripes - compute the number of stripes
+    for (int i = 0; i < (nbrLEDS / stripeWidth); i += 2) {
       // Draw each strip 2 strip widths apart.
-      for (int j = i * stripWidth; j < min(((i * stripWidth) + stripWidth), nbrLEDS); j++) {
+      for (int j = i * stripeWidth; j < min(((i * stripeWidth) + stripeWidth), nbrLEDS); j++) {
         // Serial.print(j); Serial.print(",");
-        leds[(j + offset) % nbrLEDS] = red;
+        leds[(j + offset) % nbrLEDS] = stripeColor;
       }
     }
 
@@ -179,7 +171,7 @@ void candyCane(unsigned int nbrLEDS, unsigned int stripWidth = 5) {
 }
 
 /** Rotating American Flag */
-void redWhiteBlue(unsigned int nbrLEDS, unsigned int stripWidth = 5) {
+void redWhiteBlue(unsigned int nbrLEDS, unsigned int stripeWidth = 5) {
 
   static int offset = 0;
 
@@ -188,15 +180,15 @@ void redWhiteBlue(unsigned int nbrLEDS, unsigned int stripWidth = 5) {
     FastLED.clear(false);
 
     for (int i = 0; i < nbrLEDS; i++) {
-      switch ((i % (3 * stripWidth)) / stripWidth) {
+      switch ((i % (3 * stripeWidth)) / stripeWidth) {
         case 0:
-          leds[(i + offset) % nbrLEDS] = blue;
+          leds[(i + offset) % nbrLEDS] = CRGB::DarkBlue;
           break;
         case 1:
-          leds[(i + offset) % nbrLEDS] = white;
+          leds[(i + offset) % nbrLEDS] = CRGB::White;
           break;
         case 2:
-          leds[(i + offset) % nbrLEDS] = red;
+          leds[(i + offset) % nbrLEDS] = CRGB::DarkRed;
           break;
       }
     }
@@ -210,7 +202,7 @@ void randomGreenAndRed(unsigned int nbrLEDS) {
 
   EVERY_N_MILLISECONDS(500) {
     for (int i = 0; i < nbrLEDS; i++) {
-      leds[i] = random(10) > 5 ? red : green;
+      leds[i] = random(10) > 5 ? CRGB::DarkRed : CRGB::DarkGreen;
     }
   }
 }
@@ -319,7 +311,7 @@ void setup() {
   mdns.addServiceRecord("XmasLights_controller._http", 80, MDNSServiceTCP);
 
   FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUMBER_OF_LIGHTS);
-  FastLED.setMaxPowerInMilliWatts(3500);
+  FastLED.setMaxPowerInMilliWatts(MAX_POWER_mW);
   set_max_power_indicator_LED(LED_BUILTIN);
 
   FastLED.setBrightness(LED_BRIGHTNESS);
@@ -352,12 +344,6 @@ void loop() {
       randomGreenAndRed(NUMBER_OF_LIGHTS);
       break;
   }
-  // twinkleStar(NUMBER_OF_LIGHTS);
-  // comet(NUMBER_OF_LIGHTS, HUE_ORANGE); 
-  // sparkle(NUMBER_OF_LIGHTS);
-  // candyCane(NUMBER_OF_LIGHTS);
-  // train(NUMBER_OF_LIGHTS);
-  // redWhiteBlue(NUMBER_OF_LIGHTS);
 
   FastLED.show();
 
