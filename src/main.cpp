@@ -137,19 +137,19 @@ void train(unsigned int nbrLEDS, unsigned int trainLength = 10) {
 
   static int offset = 0;      // train position, advanced each call
 
-  FastLED.clear();
-  for (int j = 0; j < trainLength; j++) {
-    if ((j + offset) < nbrLEDS) {
-      leds[j + offset] = red;
+  EVERY_N_MILLISECONDS(100) {
+    FastLED.clear();
+    for (int j = 0; j < trainLength; j++) {
+      if ((j + offset) < nbrLEDS) {
+        leds[j + offset] = red;
+      }
+      if ((j + trainLength + offset) < nbrLEDS) {
+        leds[j + trainLength + offset] = green;
+      }
     }
-    if ((j + trainLength + offset) < nbrLEDS) {
-      leds[j + trainLength + offset] = green;
-    }
+    
+    offset = (offset + 1) % nbrLEDS;
   }
-  
-  offset = (offset + 1) % nbrLEDS;
-
-  delay(100);
 }
 
 /** Rotating candy cane - move the candy cane one step everytime we're called 
@@ -161,21 +161,21 @@ void candyCane(unsigned int nbrLEDS, unsigned int stripWidth = 5) {
 
   static int offset = 0;
 
-  // Fill all with background color - white
-  fill_solid(leds, nbrLEDS, CRGB::White);
-  
-  // Draw the red stripes - compute the number of strips
-  for (int i = 0; i < (nbrLEDS / stripWidth); i += 2) {
-    // Draw each strip 2 strip widths apart.
-    for (int j = i * stripWidth; j < min(((i * stripWidth) + stripWidth), nbrLEDS); j++) {
-      // Serial.print(j); Serial.print(",");
-      leds[(j + offset) % nbrLEDS] = red;
+  EVERY_N_MILLISECONDS(500) {
+    // Fill all with background color - white
+    fill_solid(leds, nbrLEDS, CRGB::White);
+    
+    // Draw the red stripes - compute the number of strips
+    for (int i = 0; i < (nbrLEDS / stripWidth); i += 2) {
+      // Draw each strip 2 strip widths apart.
+      for (int j = i * stripWidth; j < min(((i * stripWidth) + stripWidth), nbrLEDS); j++) {
+        // Serial.print(j); Serial.print(",");
+        leds[(j + offset) % nbrLEDS] = red;
+      }
     }
-   }
 
-  offset = (offset + 1) % nbrLEDS;
-
-  delay(500); 
+    offset = (offset + 1) % nbrLEDS;
+  }
 }
 
 /** Rotating American Flag */
@@ -183,34 +183,36 @@ void redWhiteBlue(unsigned int nbrLEDS, unsigned int stripWidth = 5) {
 
   static int offset = 0;
 
-  FastLED.clear();
-
-  for (int i = 0; i < nbrLEDS; i++) {
-    switch ((i % (3 * stripWidth)) / stripWidth) {
-      case 0:
-        leds[(i + offset) % nbrLEDS] = blue;
-        break;
-      case 1:
-        leds[(i + offset) % nbrLEDS] = white;
-        break;
-      case 2:
-        leds[(i + offset) % nbrLEDS] = red;
-        break;
-    }
-  }
+  EVERY_N_MILLISECONDS(500) {
     
-  offset = (offset + 1) % nbrLEDS;
+    FastLED.clear(false);
 
-  delay(250);
+    for (int i = 0; i < nbrLEDS; i++) {
+      switch ((i % (3 * stripWidth)) / stripWidth) {
+        case 0:
+          leds[(i + offset) % nbrLEDS] = blue;
+          break;
+        case 1:
+          leds[(i + offset) % nbrLEDS] = white;
+          break;
+        case 2:
+          leds[(i + offset) % nbrLEDS] = red;
+          break;
+      }
+    }
+    
+    offset = (offset + 1) % nbrLEDS;
+  }
 }
 
 /** random green and red */
 void randomGreenAndRed(unsigned int nbrLEDS) {
 
-  for (int i = 0; i < nbrLEDS; i++) {
-    leds[i] = random(10) > 5 ? red : green;
+  EVERY_N_MILLISECONDS(500) {
+    for (int i = 0; i < nbrLEDS; i++) {
+      leds[i] = random(10) > 5 ? red : green;
+    }
   }
-  delay(250);
 }
 
 void printWifiStatus() {
@@ -260,6 +262,9 @@ void processAnyWebRequests() {
           client.print(F("Power Draw =  "));
           client.print(calculate_unscaled_power_mW(leds, NUMBER_OF_LIGHTS) * ((float) LED_BRIGHTNESS / 255.0));
           client.println(F(" mW"));
+          client.println(F("<br />"));
+          client.print(F("FPS = "));
+          client.println(FastLED.getFPS());
           client.println(F("<br />"));
           client.print(F("Effect Number = "));
           client.println(currentEffectNbr);
@@ -321,8 +326,6 @@ void setup() {
 }
 
 void loop() {
-
-  // double startTime = millis() / 1000.0;
 
   mdns.run();     // allow any mDNS pending processing
 
