@@ -15,29 +15,21 @@
  */
 
 #include <Arduino.h>
-#include <ArduinoBLE.h>
-#include <FlashStorage.h>
-
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <WiFiNINA.h>
+#include <ArduinoMDNS.h>
 
 #include <FastLED.h>
+
+#include "secrets.h"
 
 /** Global defaults */
 #define CANDY_STRIP_WIDTH 5
 #define TRAIN_CAR_LENGTH 5
-#define BLE_LOCAL_NAME "XmasLights_001"
-#define BLE_DEVICE_NAME "XmasLights"
+#define HOSTNAME "Library_XmasLights"
 #define NUMBER_OF_LIGHTS 150
 #define SECONDS_BETWEEN_EFFECTS 5
 #define DATA_PIN 3
-
-/** guid block - take a guid for a BLE Service
-ecb47133-a2dc-481f-919b-d878ccf2fce3
-6fea786a-3fa5-48e5-bd7b-4ec7a089d7d2
-60a94c4b-4406-4c8b-86c9-3cbc69a19067
-12ee8384-d7b7-4a5a-9176-0f464507be0b
-*/
+#define LED_BRIGHTNESS 64
 
 #define MAX_DEBUG_BUFF 256
 #define LOG(...) \
@@ -47,15 +39,7 @@ ecb47133-a2dc-481f-919b-d878ccf2fce3
   Serial.print(_buff); \
 }
 
-/** Save our configuration parameters as BLE characteristics */
-BLEService g_BLEService ("81bea2b7-ad1a-493a-bf19-123596b3328b");
-BLEBoolCharacteristic g_runLights("3a6d65bb-ed42-4443-a23b-4225e76f10d8", BLERead | BLEWrite);
-BLEUnsignedIntCharacteristic g_numberOfLights("a9497a4a-4735-4b50-b10c-da941ac7b51b", BLERead | BLEWrite);
-BLEUnsignedIntCharacteristic g_candyStripWidth("672b85ce-5175-485e-a9e2-739ebae601d9", BLERead | BLEWrite);
-BLEUnsignedIntCharacteristic g_trainCarLength("9307a368-8d50-48dd-92e8-9f65bb15f98f", BLERead | BLEWrite);
-BLEUnsignedIntCharacteristic g_secondsBetweenEffects("f0d754d8-a042-4d39-9cec-5b2243a2de86", BLERead | BLEWrite);
 
-/** TODO: fix this as it's a fixed length array */
 CRGBArray<NUMBER_OF_LIGHTS> leds;
 // const CHSV red = CHSV(0, 255, 72);
 // const CHSV green = CHSV(85, 255, 72);
@@ -65,89 +49,18 @@ const CRGB blue = CRGB::DarkBlue; // CHSV(160, 255, 50);
 const CRGB red = CRGB::DarkRed;
 const CRGB green = CRGB::DarkGreen;
 
-/** OLED Display */
-Adafruit_SSD1306 display(128, 64);
 
-/** Configuration storage structure */
-#define CONFIG_FILE_VERSION 2
-typedef struct {
-  int version;
-  bool run;
-  int nbrOfLeds;
-  int candyStripWidth;
-  int trainCarLength;
-  int secondsBetweenEffects;
-} configData_t;
+int currentEffectNbr = 0;
+const int nbrOfEffects = 7;
 
-FlashStorage(myConfigData, configData_t);
-configData_t g_configData;
+/** Web server including mDNS support */
+WiFiUDP udp;
+MDNS mdns(udp);
+WiFiServer server(80);                        // Our WiFi server listens on port 80
 
-/** Timers */
-unsigned long lastEffectStartTime;    // record the time we start an effect
-
-/** When BLE disconnects update the configuration file */
-void updateConfiguration(BLEDevice central) {
-  
-  LOG("BLE Disconnected\n");
-
-  // Write the config out if anything has changed.
-  if (g_runLights.value() != g_configData.run ||
-      g_numberOfLights.value() != g_configData.nbrOfLeds ||
-      g_candyStripWidth.value() != g_configData.candyStripWidth ||
-      g_trainCarLength.value() != g_configData.trainCarLength ||
-      g_secondsBetweenEffects.value() != g_configData.secondsBetweenEffects) {
-    LOG("Writing Configuration\n");
-    g_configData.version = CONFIG_FILE_VERSION;
-    g_configData.run = g_runLights.value();
-    g_configData.nbrOfLeds = g_numberOfLights.value();
-    g_configData.candyStripWidth = g_candyStripWidth.value();
-    g_configData.trainCarLength = g_trainCarLength.value();
-    g_configData.secondsBetweenEffects = g_secondsBetweenEffects.value();
-
-    myConfigData.write(g_configData);
-  }
-}
-
-/** Configure the BLE Service and it's characteristics and descriptors */
-void configureBLEService() {
-
-  LOG("configureBLEService\n");
-
-  g_configData = myConfigData.read();
-
-  if (g_configData.version != CONFIG_FILE_VERSION) {
-    // Use the defaults if the version is wrong or not present
-    LOG("Using the default configuration\n");
-    g_configData.version = CONFIG_FILE_VERSION;
-    g_configData.run = true;
-    g_configData.nbrOfLeds = NUMBER_OF_LIGHTS;
-    g_configData.candyStripWidth = CANDY_STRIP_WIDTH;
-    g_configData.trainCarLength = TRAIN_CAR_LENGTH;
-    g_configData.secondsBetweenEffects = SECONDS_BETWEEN_EFFECTS;
-  }
-
-  g_runLights.writeValue(g_configData.run);
-  g_numberOfLights.writeValue(g_configData.nbrOfLeds);
-  g_candyStripWidth.writeValue(g_configData.candyStripWidth);
-  g_trainCarLength.writeValue(g_configData.trainCarLength);
-  g_secondsBetweenEffects.writeValue(g_configData.secondsBetweenEffects);
-
-  // Add the characteristics
-  g_BLEService.addCharacteristic(g_runLights);
-  g_BLEService.addCharacteristic(g_numberOfLights);
-  g_BLEService.addCharacteristic(g_candyStripWidth);
-  g_BLEService.addCharacteristic(g_trainCarLength);
-  g_BLEService.addCharacteristic(g_secondsBetweenEffects);
-
-  // Setup the service
-  BLE.addService(g_BLEService);
-  BLE.setEventHandler(BLEDisconnected, updateConfiguration);
-
-  LOG("BLE setup complete\n");
-}
 
 /** Comet */
-void comet(unsigned int nbrOfLEDS) {
+void comet(unsigned int nbrOfLEDS, HSVHue cometHue = HUE_RED) {
 
   const int cometSize = 10;
   static int iDirection = 1;
@@ -160,12 +73,33 @@ void comet(unsigned int nbrOfLEDS) {
     iDirection *= -1;
 
   for (int i = 0; i < cometSize; i++)
-    leds[iPos + 1].setHue(HUE_RED);
+    leds[iPos + 1].setHue(cometHue);
 
   for (int j = 0; j < nbrOfLEDS; j++)
-    leds[j] = leds[j].fadeToBlackBy(fadeAmt);
+    if (random(2) == 1)
+      leds[j] = leds[j].fadeToBlackBy(fadeAmt);
 
-//  delay(20);
+}
+
+/** Sparkle  */
+void sparkle(unsigned int nbrOfLEDS) {
+
+  static const unsigned int nbrOfColors = 6;
+
+  static const CRGB sparkleColors [nbrOfColors] =
+  {
+    CRGB::Red,
+    CRGB::Blue,
+    CRGB::Purple,
+    CRGB::Black,
+    CRGB::Green,
+    CRGB::Orange
+  };
+
+  EVERY_N_MILLISECONDS(750) {
+    for (int i = 0; i < nbrOfLEDS; i++) 
+      leds[i] = sparkleColors[random(nbrOfColors)];
+  }
 }
 
 /** Twinkle stars */
@@ -183,21 +117,23 @@ void twinkleStar(unsigned int nbrOfLEDS) {
   };
 
   static unsigned int passCount = 0;
-  passCount++;
 
-  if (passCount == nbrOfLEDS / 4) 
-  {
-    passCount = 0;
-    FastLED.clear(false);
+  EVERY_N_MILLISECONDS(200) {
+    passCount++;
+
+    if (passCount == nbrOfLEDS / 4) 
+    {
+      passCount = 0;
+      FastLED.clear(false);
+    }
+    
+    leds[random(nbrOfLEDS)] = twinkleColors[random(nbrOfColors)];
   }
-  
-  leds[random(nbrOfLEDS)] = twinkleColors[random(nbrOfColors)];
-  delay(200);
 
 }
 
 /** Green and Red Train */
-void train(unsigned int trainLength, unsigned int nbrLEDS) {
+void train(unsigned int nbrLEDS, unsigned int trainLength = 10) {
 
   static int offset = 0;      // train position, advanced each call
 
@@ -211,35 +147,39 @@ void train(unsigned int trainLength, unsigned int nbrLEDS) {
     }
   }
   
-  FastLED.show();
   offset = (offset + 1) % nbrLEDS;
+
+  delay(100);
 }
 
-/** Rotating candy cane - move the candy cane one step everytime we're called */
-void candyCane(unsigned int stripWidth, unsigned int nbrLEDS) {
+/** Rotating candy cane - move the candy cane one step everytime we're called 
+ * 
+ * @note While safe to call with any width strip, to avoid artifacts the
+ * nbrOfLEDS should be divisible by 2 * stripWidth.
+*/
+void candyCane(unsigned int nbrLEDS, unsigned int stripWidth = 5) {
 
   static int offset = 0;
 
   // Fill all with background color - white
-  for (int i = 0; i < nbrLEDS; i++) {
-    leds[i] = white;
-  }
+  fill_solid(leds, nbrLEDS, CRGB::White);
   
   // Draw the red stripes - compute the number of strips
-  for (int i = 0; i < (nbrLEDS / stripWidth); i++) {
+  for (int i = 0; i < (nbrLEDS / stripWidth); i += 2) {
     // Draw each strip 2 strip widths apart.
-    for (int j = i * stripWidth * 2; j < ((i * stripWidth * 2) + stripWidth); j++) {
+    for (int j = i * stripWidth; j < min(((i * stripWidth) + stripWidth), nbrLEDS); j++) {
+      // Serial.print(j); Serial.print(",");
       leds[(j + offset) % nbrLEDS] = red;
     }
    }
 
   offset = (offset + 1) % nbrLEDS;
 
-  FastLED.show(); 
+  delay(500); 
 }
 
 /** Rotating American Flag */
-void redWhiteBlue(unsigned int stripWidth, unsigned int nbrLEDS) {
+void redWhiteBlue(unsigned int nbrLEDS, unsigned int stripWidth = 5) {
 
   static int offset = 0;
 
@@ -259,8 +199,9 @@ void redWhiteBlue(unsigned int stripWidth, unsigned int nbrLEDS) {
     }
   }
     
-  FastLED.show();
   offset = (offset + 1) % nbrLEDS;
+
+  delay(250);
 }
 
 /** random green and red */
@@ -269,30 +210,77 @@ void randomGreenAndRed(unsigned int nbrLEDS) {
   for (int i = 0; i < nbrLEDS; i++) {
     leds[i] = random(10) > 5 ? red : green;
   }
-  FastLED.show();
-
+  delay(250);
 }
 
+void printWifiStatus() {
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
 
-void updateDisplay(double fps) {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE, SSD1306_BLACK);
-  display.setFont(NULL);  // use the default font
-  display.setCursor(0,0);
-  display.print("FPS: "); display.print(fps);
-  display.setCursor(0, 10);
-  display.print("Required Pwr: "); 
-  display.print(calculate_unscaled_power_mW(leds, NUMBER_OF_LIGHTS)); 
-  display.print(" mW");
-  if (BLE.connected()) {
-    display.setCursor(0, 20);
-    display.print("BLE Connected");
-    display.setCursor(10, 30);
-    display.print(BLE.central().address());
-  }
-  display.display();
-  
+  // print your board's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+}
+
+/** Respond to can web client connects and refresh the web status page. */
+void processAnyWebRequests() {
+
+  WiFiClient client = server.available();
+  if (client) {
+    // an HTTP request ends with a blank line
+    bool current_line_is_blank = true;
+    while (client.connected()) {
+      if (client.available()) {
+        char c = client.read();
+        // if we've gotten to the end of the line (received a newline
+        // character) and the line is blank, the HTTP request has ended,
+        // so we can send a reply
+        if (c == '\n' && current_line_is_blank) {
+          // send a standard HTTP response header
+          client.println(F("HTTP/1.1 200 OK"));
+          client.println(F("Content-Type: text/html"));
+          client.println("Connection: close");  // the connection will be closed after completion of the response
+          client.println("Refresh: 5");  // refresh the page automatically every 5 sec
+          client.println();
+
+          client.println(F("<!DOCTYPE HTML>"));
+          client.println(F("<html>"));
+          client.print(F("<h1>"));
+          client.print(HOSTNAME);
+          client.println(F("</h1>"));
+          client.println("<h2>LED Status</h2>");
+          client.print(F("Power Draw =  "));
+          client.print(calculate_unscaled_power_mW(leds, NUMBER_OF_LIGHTS) * ((float) LED_BRIGHTNESS / 255.0));
+          client.println(F(" mW"));
+          client.println(F("<br />"));
+          client.print(F("Effect Number = "));
+          client.println(currentEffectNbr);
+          client.println(F("</html>"));
+
+          break;
+        }
+        if (c == '\n') {
+          // we're starting a new line
+          current_line_is_blank = true;
+        } else if (c != '\r') {
+          // we've gotten a character on the current line
+          current_line_is_blank = false;
+        }
+      }
+    }
+    
+    // give the web browser time to receive the data
+    delay(1);
+    client.stop();
+    }
 }
 
 
@@ -304,86 +292,79 @@ void setup() {
   pinMode(DATA_PIN, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println("Failed to initialize the display!");
-    while(1);
+  WiFi.setHostname(HOSTNAME);             // Use this host name in the DHCP registration
+
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.print("Attempting to connect to WiFi: ");
+    Serial.println(WIFI_SSID);
+    WiFi.begin(WIFI_SSID, WIFI_PWD);
+    delay(10000); 
   }
-  display.clearDisplay();
+
+  delay(5000);
+
+  printWifiStatus();
+
+  // start the web server
+  server.begin();
+
+  // Register our services via mDNS
+  mdns.begin(WiFi.localIP(), HOSTNAME);
+  mdns.addServiceRecord("XmasLights_controller._http", 80, MDNSServiceTCP);
 
   FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUMBER_OF_LIGHTS);
-//  FastLED.setMaxPowerInMilliWatts(250);
+  FastLED.setMaxPowerInMilliWatts(3500);
   set_max_power_indicator_LED(LED_BUILTIN);
 
-  FastLED.setBrightness(128);
-
-  if (!BLE.begin()) {
-    Serial.println("Error initializing BLE!");
-  } else {
-    configureBLEService();
-    BLE.setAdvertisedService(g_BLEService);
-    BLE.setLocalName(BLE_LOCAL_NAME);
-    BLE.setDeviceName(BLE_DEVICE_NAME);
-    BLE.advertise();
-  }
-
-  lastEffectStartTime = millis();
-
+  FastLED.setBrightness(LED_BRIGHTNESS);
 }
-
-float g_fps = 0.0;
-int currentEffect = 0;
-const int maxEffects = 6;
-
-void loop2() {}
 
 void loop() {
 
-  double startTime = millis() / 1000.0;
+  // double startTime = millis() / 1000.0;
 
-  if (!BLE.connected()) {         // Only run the effects if NOT connected to BLE
-    if (g_runLights.value()) {
+  mdns.run();     // allow any mDNS pending processing
 
-      // twinkleStar(NUMBER_OF_LIGHTS);
-      comet(NUMBER_OF_LIGHTS);
-      FastLED.show();
+  switch(currentEffectNbr) {
+    case 0:
+      candyCane(NUMBER_OF_LIGHTS);
+      break;
+    case 1:
+      twinkleStar(NUMBER_OF_LIGHTS);
+      break;
+    case 2:
+      comet(NUMBER_OF_LIGHTS, HUE_ORANGE);
+      break;
+    case 3:
+      train(NUMBER_OF_LIGHTS);
+      break;
+    case 4:
+      sparkle(NUMBER_OF_LIGHTS);
+      break;
+    case 5: 
+      redWhiteBlue(NUMBER_OF_LIGHTS);
+      break;
+    case 6:
+      randomGreenAndRed(NUMBER_OF_LIGHTS);
+      break;
+  }
+  // twinkleStar(NUMBER_OF_LIGHTS);
+  // comet(NUMBER_OF_LIGHTS, HUE_ORANGE); 
+  // sparkle(NUMBER_OF_LIGHTS);
+  // candyCane(NUMBER_OF_LIGHTS);
+  // train(NUMBER_OF_LIGHTS);
+  // redWhiteBlue(NUMBER_OF_LIGHTS);
 
-      // Run the current effect
-      EVERY_N_MILLISECONDS(500) {
-        switch (currentEffect) {
-          case 0:
-            candyCane(g_candyStripWidth.value(), g_numberOfLights.value());
-            break;
-          case 1:
-            randomGreenAndRed(g_numberOfLights.value());
-            break;
-          case 2:
-            train(g_trainCarLength.value(), g_numberOfLights.value());
-            break;
-          case 3:
-            redWhiteBlue(g_trainCarLength.value(), g_numberOfLights.value());
-            break;
-          case 4:
-            twinkleStar(g_numberOfLights.value());
-            break;
-          case 5:
-            comet(g_numberOfLights.value());
-            break;
-        }
-      }
+  FastLED.show();
 
-      // Switch to the next effect - NB we cannot EVERY_N_SECONDS() as it doesn't handle variable periods.
-      if (millis() - lastEffectStartTime >= g_configData.secondsBetweenEffects * 1000) {
-        LOG("Switching Effects\n");
-        currentEffect = (currentEffect + 1) % maxEffects;
-        lastEffectStartTime = millis();
-      }
-   } else {
-      FastLED.clear(true);
-    }
+  processAnyWebRequests();            // Check if we have any requests and handle them.
 
-  double duration = millis() / 1000.0 - startTime;
-  g_fps = 0.9f * g_fps + 0.1f * (1000.0f / duration);
-//  updateDisplay(g_fps);
+  EVERY_N_SECONDS(SECONDS_BETWEEN_EFFECTS) {
+    currentEffectNbr = (currentEffectNbr + 1) % nbrOfEffects;
+    FastLED.clear(false);
+  }
 
-  BLE.poll(50);
+  delay(50);
+
 }
